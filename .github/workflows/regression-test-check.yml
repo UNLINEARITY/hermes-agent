@@ -1,0 +1,105 @@
+name: Regression Test Check
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: regression-test-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-tests:
+    name: Check for Regression Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check high-risk files have corresponding tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # High-risk files that should have test coverage when modified
+          HIGH_RISK_FILES=(
+            "run_agent.py"
+            "cli.py"
+            "gateway/run.py"
+            "tools/approval.py"
+            "tools/terminal_tool.py"
+            "model_tools.py"
+          )
+
+          # Get the list of changed files in this PR
+          CHANGED_FILES=$(gh pr diff "$PR_NUMBER" --name-only)
+
+          # Check if any high-risk files were modified
+          HIGH_RISK_MODIFIED=()
+          for file in "${HIGH_RISK_FILES[@]}"; do
+            if echo "$CHANGED_FILES" | grep -qx "$file"; then
+              HIGH_RISK_MODIFIED+=("$file")
+            fi
+          done
+
+          # If no high-risk files modified, we're good
+          if [ ${#HIGH_RISK_MODIFIED[@]} -eq 0 ]; then
+            echo "No high-risk files modified. Skipping test check."
+            exit 0
+          fi
+
+          echo "High-risk files modified: ${HIGH_RISK_MODIFIED[*]}"
+
+          # Check if any test files were added or modified
+          TEST_FILES_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/" || true)
+
+          if [ -z "$TEST_FILES_CHANGED" ]; then
+            echo "::warning::High-risk files modified without test changes!"
+
+            # Build the warning comment
+            MODIFIED_LIST=""
+            for file in "${HIGH_RISK_MODIFIED[@]}"; do
+              MODIFIED_LIST="$MODIFIED_LIST\n- \`$file\`"
+            done
+
+            COMMENT_BODY=$(cat <<EOF
+          ⚠️ **Regression Test Check Warning**
+
+          This PR modifies the following high-risk files:
+          $(for file in "${HIGH_RISK_MODIFIED[@]}"; do echo "- \`$file\`"; done)
+
+          However, no test files under \`tests/\` were added or modified.
+
+          Please consider adding or updating tests to cover these changes. This helps prevent regressions in critical code paths.
+
+          > _This is an automated check. If the changes are trivial or already covered by existing tests, you can disregard this warning._
+          EOF
+          )
+
+            # Post a comment on the PR (update existing comment if one exists)
+            EXISTING_COMMENT_ID=$(gh api \
+              "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --jq '.[] | select(.body | startswith("⚠️ **Regression Test Check Warning**")) | .id' \
+              | head -1)
+
+            if [ -n "$EXISTING_COMMENT_ID" ]; then
+              gh api \
+                "repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT_ID}" \
+                -X PATCH \
+                -f body="$COMMENT_BODY"
+              echo "Updated existing warning comment."
+            else
+              gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+              echo "Posted warning comment on PR."
+            fi
+          else
+            echo "Test files were modified. Check passed."
+            echo "Changed test files:"
+            echo "$TEST_FILES_CHANGED"
+          fi

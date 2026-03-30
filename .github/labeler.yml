@@ -1,0 +1,45 @@
+# Scope labels for actions/labeler@v5
+# Maps labels to file path patterns
+
+agent-core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - run_agent.py
+          - model_tools.py
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - cli.py
+          - hermes_cli/**
+
+gateway:
+  - changed-files:
+      - any-glob-to-any-file:
+          - gateway/**
+
+tools:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tools/**
+
+cron:
+  - changed-files:
+      - any-glob-to-any-file:
+          - cron/**
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - website/**
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - hermes_cli/config.py
+          - hermes_cli/setup.py

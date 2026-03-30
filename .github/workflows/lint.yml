@@ -1,0 +1,33 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Ruff Lint & Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff linter
+        run: ruff check .
+
+      - name: Check ruff formatting
+        run: ruff format --check .
