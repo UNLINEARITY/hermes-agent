@@ -64,7 +64,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": BACKEND,
+      "/api": {
+        target: BACKEND,
+        ws: true,
+      },
     },
   },
 });

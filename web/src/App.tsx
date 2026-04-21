@@ -33,6 +33,7 @@ import LogsPage from "@/pages/LogsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import CronPage from "@/pages/CronPage";
 import SkillsPage from "@/pages/SkillsPage";
+import ChatPage from "@/pages/ChatPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -41,6 +42,7 @@ import type { RegisteredPlugin } from "@/plugins";
 
 const BUILTIN_NAV: NavItem[] = [
   { path: "/", labelKey: "status", label: "Status", icon: Activity },
+  { path: "/chat", labelKey: "chat", label: "Chat", icon: Terminal },
   {
     path: "/sessions",
     labelKey: "sessions",
@@ -230,6 +232,7 @@ export default function App() {
       <main className="relative z-2 mx-auto w-full max-w-[1600px] flex-1 px-3 sm:px-6 pt-16 sm:pt-20 pb-4 sm:pb-8">
         <Routes>
           <Route path="/" element={<StatusPage />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/logs" element={<LogsPage />} />

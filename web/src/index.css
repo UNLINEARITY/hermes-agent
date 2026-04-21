@@ -6,6 +6,37 @@
 @source '../node_modules/@nous-research/ui/dist';
 
 /* ------------------------------------------------------------------ */
+/* JetBrains Mono — bundled for the embedded TUI (/chat tab).          */
+/* wterm defaults to Menlo/Consolas which lack complete Unicode box-  */
+/* drawing coverage, so the TUI's scrollbar (U+2502/U+2503) and other  */
+/* box glyphs fall back to the browser's generic monospace and render  */
+/* as broken / mis-sized bars. JetBrains Mono ships the full U+2500–  */
+/* U+257F block at full cell height. Apache-2.0. */
+/* ------------------------------------------------------------------ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts-terminal/JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts-terminal/JetBrainsMono-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts-terminal/JetBrainsMono-Italic.woff2') format('woff2');
+}
+
+/* ------------------------------------------------------------------ */
 /* Hermes Agent — Nous DS with the LENS_0 (Hermes teal) lens applied   */
 /* statically. Mirrors nousnet-web/(hermes-agent)/layout.tsx so the    */
 /* canonical Hermes palette is the default — teal canvas + cream      */

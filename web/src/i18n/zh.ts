@@ -54,6 +54,7 @@ export const zh: Translations = {
     },
     nav: {
       status: "状态",
+      chat: "对话",
       sessions: "会话",
       analytics: "分析",
       logs: "日志",
@@ -97,6 +98,7 @@ export const zh: Translations = {
     noMessages: "暂无消息",
     untitledSession: "无标题会话",
     deleteSession: "删除会话",
+    resumeInChat: "在对话中继续",
     previousPage: "上一页",
     nextPage: "下一页",
     roles: {
