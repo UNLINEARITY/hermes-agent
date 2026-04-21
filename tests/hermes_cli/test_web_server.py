@@ -1255,3 +1255,186 @@ class TestStatusRemoteGateway:
         assert data["gateway_running"] is True
         assert data["gateway_pid"] is None
         assert data["gateway_state"] == "running"
+
+
+# ---------------------------------------------------------------------------
+# /api/pty WebSocket — terminal bridge for the dashboard "Chat" tab.
+#
+# These tests drive the endpoint with a tiny fake command (typically ``cat``
+# or ``sh -c 'printf …'``) instead of the real ``hermes --tui`` binary.  The
+# endpoint resolves its argv through ``_resolve_chat_argv``, so tests
+# monkeypatch that hook.
+# ---------------------------------------------------------------------------
+
+import sys
+
+
+skip_on_windows = pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="PTY bridge is POSIX-only"
+)
+
+
+@skip_on_windows
+class TestPtyWebSocket:
+    @pytest.fixture(autouse=True)
+    def _setup(self, monkeypatch, _isolate_hermes_home):
+        from starlette.testclient import TestClient
+
+        import hermes_cli.web_server as ws
+
+        # Avoid exec'ing the actual TUI in tests: every test below installs
+        # its own fake argv via ``ws._resolve_chat_argv``.
+        self.ws_module = ws
+        self.token = ws._SESSION_TOKEN
+        self.client = TestClient(ws.app)
+
+    def _url(self, token: str | None = None, **params: str) -> str:
+        tok = token if token is not None else self.token
+        # TestClient.websocket_connect takes the path; it reconstructs the
+        # query string, so we pass it inline.
+        from urllib.parse import urlencode
+
+        q = {"token": tok, **params}
+        return f"/api/pty?{urlencode(q)}"
+
+    def test_rejects_missing_token(self, monkeypatch):
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            lambda resume=None: (["/bin/cat"], None, None),
+        )
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with self.client.websocket_connect("/api/pty"):
+                pass
+        assert exc.value.code == 4401
+
+    def test_rejects_bad_token(self, monkeypatch):
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            lambda resume=None: (["/bin/cat"], None, None),
+        )
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with self.client.websocket_connect(self._url(token="wrong")):
+                pass
+        assert exc.value.code == 4401
+
+    def test_streams_child_stdout_to_client(self, monkeypatch):
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            lambda resume=None: (
+                ["/bin/sh", "-c", "printf hermes-ws-ok"],
+                None,
+                None,
+            ),
+        )
+        with self.client.websocket_connect(self._url()) as conn:
+            # Drain frames until we see the needle or time out.  TestClient's
+            # recv_bytes blocks; loop until we have the signal byte string.
+            buf = b""
+            import time
+
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                try:
+                    frame = conn.receive_bytes()
+                except Exception:
+                    break
+                if frame:
+                    buf += frame
+                if b"hermes-ws-ok" in buf:
+                    break
+            assert b"hermes-ws-ok" in buf
+
+    def test_client_input_reaches_child_stdin(self, monkeypatch):
+        # ``cat`` echoes stdin back, so a write → read round-trip proves
+        # the full duplex path.
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            lambda resume=None: (["/bin/cat"], None, None),
+        )
+        with self.client.websocket_connect(self._url()) as conn:
+            conn.send_bytes(b"round-trip-payload\n")
+            buf = b""
+            import time
+
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                frame = conn.receive_bytes()
+                if frame:
+                    buf += frame
+                if b"round-trip-payload" in buf:
+                    break
+            assert b"round-trip-payload" in buf
+
+    def test_resize_escape_is_forwarded(self, monkeypatch):
+        # Resize escape gets intercepted and applied via TIOCSWINSZ,
+        # then ``tput cols/lines`` reports the new dimensions back.
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            # sleep gives the test time to push the resize before tput runs
+            lambda resume=None: (
+                ["/bin/sh", "-c", "sleep 0.15; tput cols; tput lines"],
+                None,
+                None,
+            ),
+        )
+        with self.client.websocket_connect(self._url()) as conn:
+            conn.send_text("\x1b[RESIZE:99;41]")
+            buf = b""
+            import time
+
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                frame = conn.receive_bytes()
+                if frame:
+                    buf += frame
+                if b"99" in buf and b"41" in buf:
+                    break
+            assert b"99" in buf and b"41" in buf
+
+    def test_unavailable_platform_closes_with_message(self, monkeypatch):
+        from hermes_cli.pty_bridge import PtyUnavailableError
+
+        def _raise(argv, **kwargs):
+            raise PtyUnavailableError("pty missing for tests")
+
+        monkeypatch.setattr(
+            self.ws_module,
+            "_resolve_chat_argv",
+            lambda resume=None: (["/bin/cat"], None, None),
+        )
+        # Patch PtyBridge.spawn at the web_server module's binding.
+        import hermes_cli.web_server as ws_mod
+
+        monkeypatch.setattr(ws_mod.PtyBridge, "spawn", classmethod(lambda cls, *a, **k: _raise(*a, **k)))
+
+        with self.client.websocket_connect(self._url()) as conn:
+            # Expect a final text frame with the error message, then close.
+            msg = conn.receive_text()
+            assert "pty missing" in msg or "unavailable" in msg.lower() or "pty" in msg.lower()
+
+    def test_resume_parameter_is_forwarded_to_argv(self, monkeypatch):
+        captured: dict = {}
+
+        def fake_resolve(resume=None):
+            captured["resume"] = resume
+            return (["/bin/sh", "-c", "printf resume-arg-ok"], None, None)
+
+        monkeypatch.setattr(self.ws_module, "_resolve_chat_argv", fake_resolve)
+
+        with self.client.websocket_connect(self._url(resume="sess-42")) as conn:
+            # Drain briefly so the handler actually invokes the resolver.
+            try:
+                conn.receive_bytes()
+            except Exception:
+                pass
+        assert captured.get("resume") == "sess-42"
+
