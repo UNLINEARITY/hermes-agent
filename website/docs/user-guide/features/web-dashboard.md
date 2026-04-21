@@ -60,6 +60,28 @@ The landing page shows a live overview of your installation:
 
 The status page auto-refreshes every 5 seconds.
 
+### Chat
+
+The **Chat** tab embeds the full Hermes TUI (the same interface you get from `hermes --tui`) directly in the browser. Everything you can do in the terminal TUI — slash commands, model picker, tool-call cards, markdown streaming, clarify/sudo/approval prompts, skin theming — works identically here, because the dashboard is running the real TUI binary and rendering its ANSI output through [xterm.js](https://xtermjs.org/) with its WebGL renderer for pixel-perfect cell layout.
+
+**How it works:**
+
+- `/api/pty` opens a WebSocket authenticated with the dashboard's session token
+- The server spawns `hermes --tui` behind a POSIX pseudo-terminal
+- Keystrokes travel to the PTY; ANSI output streams back to the browser
+- xterm.js's WebGL renderer paints each cell to an integer-pixel grid; mouse tracking (SGR 1006), wide characters (Unicode 11), and box-drawing glyphs all render natively
+- Resizing the browser window resizes the TUI via the `@xterm/addon-fit` addon
+
+**Resume an existing session:** from the **Sessions** tab, click the play icon (▶) next to any session. That jumps to `/chat?resume=<id>` and launches the TUI with `--resume`, loading the full history.
+
+**Prerequisites:**
+
+- Node.js (same requirement as `hermes --tui`; the TUI bundle is built on first launch)
+- `ptyprocess` — included when you `pip install hermes-agent[web]`
+- POSIX kernel (Linux, macOS, or WSL). Native Windows Python is not supported — use WSL.
+
+Close the browser tab and the PTY is reaped cleanly on the server. Re-opening spawns a fresh session.
+
 ### Config
 
 A form-based editor for `config.yaml`. All 150+ configuration fields are auto-discovered from `DEFAULT_CONFIG` and organized into tabbed categories:

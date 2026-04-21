@@ -243,6 +243,17 @@ npm run fmt       # prettier
 npm test          # vitest
 ```
 
+### TUI in the Dashboard (`hermes dashboard` → `/chat`)
+
+The dashboard embeds the real `hermes --tui` — **not** a rewrite.  See `hermes_cli/pty_bridge.py` + the `@app.websocket("/api/pty")` endpoint in `hermes_cli/web_server.py`.
+
+- Browser loads `web/src/pages/ChatPage.tsx`, which mounts xterm.js's `Terminal` with the WebGL renderer, `@xterm/addon-fit` for container-driven resize, and `@xterm/addon-unicode11` for modern wide-character widths.
+- `/api/pty?token=…` upgrades to a WebSocket; auth uses the same ephemeral `_SESSION_TOKEN` as REST, via query param (browsers can't set `Authorization` on WS upgrade).
+- The server spawns whatever `hermes --tui` would spawn, through `ptyprocess` (POSIX PTY — WSL works, native Windows does not).
+- Frames: raw PTY bytes each direction; resize via `\x1b[RESIZE:<cols>;<rows>]` intercepted on the server and applied with `TIOCSWINSZ`.
+
+**Never add a parallel chat surface in React.** If you catch yourself re-implementing slash popover / model picker / tool cards for the dashboard, stop — the TUI already does those, and anything new you add to Ink will appear in the dashboard automatically.
+
 ---
 
 ## Adding New Tools
